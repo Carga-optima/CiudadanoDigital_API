@@ -34,22 +34,26 @@ jobs:
       - name: Deploy to EC2 via SSM
         run: |
           INSTANCE_ID=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=compdi-instance" \
+            --filters "Name=tag:Name,Values=comp-digital" \
             --query "Reservations[0].Instances[0].InstanceId" \
             --output text)
 
-          echo "FOUND INSTANCE ID: $INSTANCE_ID"
+          if [ "$INSTANCE_ID" = "None" ] || [ -z "$INSTANCE_ID" ]; then
+            echo "ERROR: No EC2 instance found"
+            exit 1
+          fi
 
           aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy new backend image" \
-            --parameters commands="[
-              \"docker pull ${ECR_REPOSITORY}:latest\",
-              \"docker stop compdi || true\",
-              \"docker rm compdi || true\",
-              \"docker run -d --name comp-digital -p 80:80 ${ECR_REPOSITORY}:latest\"
-            ]" \
+            --parameters 'commands=[
+              "aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 639135895801.dkr.ecr.us-east-2.amazonaws.com",
+              "docker pull 639135895801.dkr.ecr.us-east-2.amazonaws.com/uvg/comp_digital:latest",
+              "docker stop comp_digital || true",
+              "docker rm comp_digital || true",
+              "docker run -d --name comp_digital -p 80:80 639135895801.dkr.ecr.us-east-2.amazonaws.com/uvg/comp_digital:latest"
+            ]' \
             --output text
       - name: Check SSM command output
         run: |
