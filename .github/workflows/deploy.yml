@@ -46,9 +46,9 @@ jobs:
             --comment "Deploy new backend image" \
             --parameters commands="[
               \"docker pull ${ECR_REPOSITORY}:latest\",
-              \"docker stop rag-backend || true\",
-              \"docker rm rag-backend || true\",
-              \"docker run -d --name rag-backend -p 80:80 ${ECR_REPOSITORY}:latest\"
+              \"docker stop compdi || true\",
+              \"docker rm compdi || true\",
+              \"docker run -d --name comp-digital -p 80:80 ${ECR_REPOSITORY}:latest\"
             ]" \
             --output text
 
