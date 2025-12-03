@@ -47,14 +47,16 @@ jobs:
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy new backend image" \
-            --parameters 'commands=[
+            --parameters '{"commands": [
               "aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 639135895801.dkr.ecr.us-east-2.amazonaws.com",
               "docker pull 639135895801.dkr.ecr.us-east-2.amazonaws.com/uvg/comp_digital:latest",
               "docker stop comp_digital || true",
               "docker rm comp_digital || true",
               "docker run -d --name comp_digital -p 80:80 639135895801.dkr.ecr.us-east-2.amazonaws.com/uvg/comp_digital:latest"
-            ]' \
+            ]}' \
+            --region us-east-2 \
             --output text
+
       - name: Check SSM command output
         run: |
           COMMAND_ID=$(aws ssm list-commands \
