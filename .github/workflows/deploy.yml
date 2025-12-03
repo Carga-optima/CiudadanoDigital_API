@@ -23,18 +23,18 @@ jobs:
       - name: Login to AWS
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build and push docker image
-        id: build-and-push-image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags : ${{ secrets.ECR_REPOSITORY }}:latest
+      # - name: Build and push docker image
+      #   id: build-and-push-image
+      #   uses: docker/build-push-action@v4
+      #   with:
+      #     context: .
+      #     file: ./Dockerfile
+      #     push: true
+      #     tags : ${{ secrets.ECR_REPOSITORY }}:latest
       - name: Deploy to EC2 via SSM
         run: |
           INSTANCE_ID=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=rag-backend" \
+            --filters "Name=tag:Name,Values=compdi-instance" \
             --query "Reservations[0].Instances[0].InstanceId" \
             --output text)
 
