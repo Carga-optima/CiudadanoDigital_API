@@ -207,7 +207,6 @@ resource "aws_instance" "comp_digital" {
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.backend.id
   vpc_security_group_ids = [aws_security_group.comp_digital_sg_ec2.id]
-  key_name               = var.existing_key_name
 
   user_data = file("docker_setup.sh")
   iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
