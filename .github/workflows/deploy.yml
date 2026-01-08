@@ -75,12 +75,16 @@ jobs:
             --parameters "{\"commands\": [
               \"set -e\",
 
-              \"echo Fetching base env...\",
-              \"aws ssm get-parameter --name /comp-digital-env --with-decryption --query Parameter.Value --output text > /home/ubuntu/envfile\",
+              \"echo 'Capturando parámetros de SSM...'\",
+              # Usamos una variable intermedia para verificar que no esté vacía
+              \"BASE_ENV=\$(aws ssm get-parameter --name /comp-digital-env --with-decryption --query Parameter.Value --output text --region $REGION)\",
+              \"DB_URL=\$(aws ssm get-parameter --name /comp-digital/database/DATABASE_URL --with-decryption --query Parameter.Value --output text --region $REGION)\",
+              
+              \"if [ -z \\\"\$BASE_ENV\\\" ] || [ -z \\\"\$DB_URL\\\" ]; then echo 'ERROR: Parámetros vacíos'; exit 1; fi\",
 
-              \"echo Fetching DATABASE_URL...\",
-              \"echo DATABASE_URL=$(aws ssm get-parameter --name /comp-digital/database/DATABASE_URL --with-decryption --query Parameter.Value --output text) >> /home/ubuntu/envfile\",
-
+              # Escribir al archivo
+              \"echo \\\"\$BASE_ENV\\\" > /home/ubuntu/envfile\",
+              \"echo \\\"DATABASE_URL=\$DB_URL\\\" >> /home/ubuntu/envfile\",
               \"chown ubuntu:ubuntu /home/ubuntu/envfile\",
               \"chmod 600 /home/ubuntu/envfile\",
 
