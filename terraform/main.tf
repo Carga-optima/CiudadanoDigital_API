@@ -3,8 +3,8 @@ terraform {
   backend "s3" {
     bucket         = "comp-digital-tf-state"
     key            = "prod/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    region         = "us-east-2"
+    use_lockfile   = "terraform-locks"
     encrypt        = true
   }
 
