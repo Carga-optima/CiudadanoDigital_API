@@ -4,7 +4,7 @@ terraform {
     bucket         = "comp-digital-tf-state"
     key            = "prod/terraform.tfstate"
     region         = "us-east-2"
-    use_lockfile   = "terraform-locks"
+    dynamodb_table = "terraform-locks"
     encrypt        = true
   }
 
