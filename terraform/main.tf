@@ -1,19 +1,4 @@
 # Resources
-terraform {
-  backend "s3" {
-    bucket         = "comp-digital-terraform-state"
-    key            = "prod/terraform.tfstate"
-    region         = "us-east-2"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
-  }
-
-  required_providers {
-    aws = {
-      source = "hashicorp/aws"
-    }
-  }
-}
 
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"

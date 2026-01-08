@@ -1,10 +1,16 @@
 # Terraform config
-
 terraform {
+  backend "s3" {
+    bucket         = "comp-digital-terraform-state"
+    key            = "prod/terraform.tfstate"
+    region         = "us-east-2"
+    dynamodb_table = "terraform-locks"
+    encrypt        = true
+  }
+
   required_providers {
     aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.92"
+      source = "hashicorp/aws"
     }
   }
 
