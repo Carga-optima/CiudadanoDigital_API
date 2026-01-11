@@ -327,6 +327,7 @@ resource "aws_lb_target_group_attachment" "app_attach" {
 resource "aws_ecr_repository" "comp_digital" {
   name                 = "uvg/comp_digital"
   image_tag_mutability = "MUTABLE"
+  force_delete = true
 
   image_scanning_configuration {
     scan_on_push = true
