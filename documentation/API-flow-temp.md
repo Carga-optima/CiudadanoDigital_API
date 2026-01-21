@@ -471,61 +471,7 @@ sequenceDiagram
 
 ---
 
-## 💬 7. Flujo de Creación de Chats
-
-### Descripción General
-El usuario crea un nuevo chat para iniciar una conversación con el asistente de IA.
-
-### Diagrama de Secuencia
-
-```mermaid
-sequenceDiagram
-    participant User as 👤 Usuario
-    participant Web as 🌐 App Web
-    participant API as 🔗 API Backend
-
-    User->>Web: Click "Nuevo Chat"
-    Web->>Web: refreshTokenSiNecesario()
-
-    Web->>API: POST /api/chat<br/>Header: Authorization: Bearer token<br/>{name: "Nombre del chat"}
-    activate API
-    API->>API: Validar token
-    API->>API: Crear chat en BD
-    API-->>Web: 200 NewChatResponse<br/>{message, chat}
-    deactivate API
-
-    Web-->>User: ✅ Chat creado<br/>Redirigir al chat
-```
-
-### Tabla de Detalles de Endpoints
-
-| Endpoint | Método | Descripción |
-|----------|--------|-------------|
-| `POST /api/chat` | POST | Crea un nuevo chat |
-
-### Parámetros de Entrada
-```json
-{
-    "name": "string"
-}
-```
-
-### Respuestas
-```json
-{
-    "message": "string",
-    "chat": {
-        "chatid": "number",
-        "userid": "number",
-        "fechainicio": "string (ISO 8601)",
-        "nombre": "string"
-    }
-}
-```
-
----
-
-## 📋 8. Flujo de Obtención de Chats
+## 💬 7. Flujo de Obtención de Chats
 
 ### Descripción General
 El usuario visualiza la lista de todos sus chats anteriores.
@@ -573,9 +519,9 @@ sequenceDiagram
 
 ---
 
-## 💬 9. Flujo de Mensajes en Chats
+## 💬 8. Flujo de Mensajes en Chats
 
-### 9.1 Obtener Mensajes de un Chat
+### 8.1 Obtener Mensajes de un Chat
 
 ```mermaid
 sequenceDiagram
@@ -596,7 +542,7 @@ sequenceDiagram
     Web-->>User: 💬 Mensajes cargados
 ```
 
-### 9.2 Enviar Mensaje y Obtener Respuesta de IA
+### 8.2 Enviar Mensaje y Obtener Respuesta de IA (Creación Automática de Chat)
 
 ```mermaid
 sequenceDiagram
@@ -632,7 +578,7 @@ sequenceDiagram
     end
 ```
 
-### 9.3 Crear Mensaje sin Respuesta de IA (opcional)
+### 8.3 Crear Mensaje sin Respuesta de IA (opcional)
 
 ```mermaid
 sequenceDiagram
@@ -714,9 +660,9 @@ sequenceDiagram
 
 ---
 
-## 📄 10. Flujo de Gestión de Documentos
+## 📄 9. Flujo de Gestión de Documentos
 
-### 10.1 Obtener Documentos
+### 9.1 Obtener Documentos
 
 ```mermaid
 sequenceDiagram
@@ -737,7 +683,7 @@ sequenceDiagram
     Web-->>User: 📁 Lista de documentos
 ```
 
-### 10.2 Subir Documento (Solo Administradores)
+### 9.2 Subir Documento (Solo Administradores)
 
 ```mermaid
 sequenceDiagram
@@ -761,7 +707,7 @@ sequenceDiagram
     Web-->>User: ✅ Documento subido
 ```
 
-### 10.3 Eliminar Documento (Solo Administradores)
+### 9.3 Eliminar Documento (Solo Administradores)
 
 ```mermaid
 sequenceDiagram
@@ -843,27 +789,25 @@ graph TD
     E -->|Código verificado| B
 
     C -->|Principal| F["🏠 Dashboard"]
-    F -->|Crear| G["💬 Nuevo Chat"]
-    F -->|Ver| H["📋 Mis Chats"]
-    F -->|Conversar| I["🤖 Chat con IA"]
-    F -->|Gestionar| J["📄 Documentos"]
-    F -->|Editar| K["👤 Perfil"]
+    F -->|Ver| G["📋 Mis Chats"]
+    F -->|Conversar| H["🤖 Chat con IA"]
+    F -->|Gestionar| I["📄 Documentos"]
+    F -->|Editar| J["👤 Perfil"]
 
-    G -->|API| L["POST /api/chat"]
-    H -->|API| M["GET /api/chat"]
-    I -->|API| N["GET /api/message/response"]
-    J -->|API| O["GET/POST/DELETE /api/document"]
-    K -->|API| P["PUT /api/user/{id}"]
+    G -->|API| K["GET /api/chat"]
+    H -->|API| L["GET /api/message/response<br/>(crea chat automáticamente)"]
+    I -->|API| M["GET/POST/DELETE /api/document"]
+    J -->|API| N["PUT /api/user/{id}"]
 
-    F -->|Cerrar| Q["🚪 Logout"]
-    Q -->|API| R["POST /api/auth/logout"]
-    R -->|Limpiar| S["🗑️ localStorage"]
-    S --> B
+    F -->|Cerrar| O["🚪 Logout"]
+    O -->|API| P["POST /api/auth/logout"]
+    P -->|Limpiar| Q["🗑️ localStorage"]
+    Q --> B
 
     style A fill:#e1f5ff
     style C fill:#c8e6c9
     style F fill:#fff9c4
-    style Q fill:#ffccbc
+    style O fill:#ffccbc
 ```
 
 ### Flujo de Autenticación en Cada Petición
@@ -955,7 +899,6 @@ graph LR
 | GET | `/api/user/logged` | Obtener usuario actual | ✅ |
 | POST | `/api/user` | Registrar usuario | ❌ |
 | PUT | `/api/user/{userId}` | Actualizar perfil | ✅ |
-| POST | `/api/chat` | Crear chat | ✅ |
 | GET | `/api/chat` | Listar chats | ✅ |
 | GET | `/api/message/{chatId}` | Obtener mensajes | ✅ |
 | POST | `/api/message/{chatId}` | Enviar mensaje a chat | ✅ |
