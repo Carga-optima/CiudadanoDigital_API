@@ -15,9 +15,9 @@ Documento que detalla el flujo de todas las llamadas a la API del backend para l
 
 ---
 
-## Configuración Inicial
+## Configuración Inicial: Device ID
 
-### Función para obtener Device ID
+En web no existe un identificador nativo del dispositivo como en mobile. Se recomienda generar un UUID y almacenarlo en `localStorage`:
 
 ```javascript
 function getDeviceId() {
@@ -33,47 +33,17 @@ function getDeviceId() {
 }
 ```
 
-### Cliente HTTP Base
-
-```javascript
-const API_BASE_URL = 'http://localhost:3000/api'
-
-async function apiRequest(endpoint, options = {}) {
-  const token = localStorage.getItem('accessToken')
-
-  const config = {
-    ...options,
-    credentials: 'include', // Importante para cookies
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Client-Type': 'web',
-      ...(token && { 'Authorization': `Bearer ${token}` }),
-      ...options.headers
-    }
-  }
-
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, config)
-
-  if (response.status === 401) {
-    // Token expirado, intentar refresh
-    const refreshed = await refreshToken()
-    if (refreshed) {
-      // Reintentar request original
-      return apiRequest(endpoint, options)
-    } else {
-      // Redirect a login
-      window.location.href = '/login'
-      throw new Error('Session expired')
-    }
-  }
-
-  return response
-}
-```
+**Consideraciones:**
+- El `deviceId` se pierde si el usuario limpia el localStorage o usa modo incógnito
+- En modo incógnito se generará un nuevo `deviceId` por sesión
+- Si se requiere mayor persistencia, considerar librerías de fingerprinting como [FingerprintJS](https://fingerprint.com/)
 
 ---
 
 ## 1. Flujo de Autenticación (Login)
+
+### Descripción General
+El usuario inicia sesión con sus credenciales. A diferencia de mobile, el refresh token se almacena automáticamente en una cookie httpOnly (más seguro contra XSS).
 
 ### Diagrama de Secuencia
 
@@ -87,14 +57,16 @@ sequenceDiagram
 
     User->>App: Ingresa email y contraseña
     App->>App: getDeviceId()
-    App->>API: POST /api/auth/login<br/>X-Client-Type: web<br/>{email, password, deviceId}
+    App->>API: POST /api/auth/login<br/>X-Client-Type: web<br/>credentials: include<br/>{email, password, deviceId}
     activate API
     API->>API: Validar credenciales
     API->>API: Generar Access Token (1h)
     API->>API: Generar Refresh Token (3d)
-    API->>Cookie: Set-Cookie: refreshToken (httpOnly)
+    API->>Cookie: Set-Cookie: refreshToken (httpOnly, secure)
     API-->>App: 200 {accessToken, user}
     deactivate API
+
+    Note over App,Cookie: El refreshToken NO viene en el JSON,<br/>se guarda automáticamente en cookie
 
     App->>Storage: localStorage.setItem('accessToken', token)
     App->>Storage: localStorage.setItem('user', JSON.stringify(user))
@@ -102,47 +74,47 @@ sequenceDiagram
     App-->>User: Login Exitoso - Redirect a Home
 ```
 
-### Implementación
+### Tabla de Detalles
 
-```javascript
-async function login(email, password) {
-  const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Client-Type': 'web'
-    },
-    body: JSON.stringify({
-      email,
-      password,
-      deviceId: getDeviceId()
-    })
-  })
+| Endpoint | Método | Headers Requeridos |
+|----------|--------|-------------------|
+| `POST /api/auth/login` | POST | `Content-Type: application/json`<br/>`X-Client-Type: web` |
 
-  if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.error || 'Login failed')
-  }
-
-  const data = await response.json()
-
-  // Guardar access token (refresh token ya está en cookie httpOnly)
-  localStorage.setItem('accessToken', data.accessToken)
-  localStorage.setItem('user', JSON.stringify(data.user))
-
-  return data
+### Request Body
+```json
+{
+  "email": "usuario@ejemplo.com",
+  "password": "contraseña123",
+  "deviceId": "uuid-generado-localmente"
 }
 ```
+
+### Response 200
+```json
+{
+  "message": "Login successful",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "userId": 1,
+    "email": "usuario@ejemplo.com",
+    "names": "Juan",
+    "lastnames": "Pérez",
+    "role": "user"
+  }
+}
+```
+
+**Nota:** El `refreshToken` NO viene en el JSON para web, se establece automáticamente como cookie httpOnly.
 
 ---
 
 ## 2. Flujo de Refresh Token
 
-El refresh token se maneja automáticamente via cookies httpOnly, lo que significa que:
+### Descripción General
+El refresh token se maneja automáticamente via cookies httpOnly:
 - El navegador lo envía automáticamente con `credentials: 'include'`
 - No es accesible desde JavaScript (protección contra XSS)
-- Se renueva automáticamente
+- Se renueva automáticamente en cada refresh
 
 ### Diagrama de Secuencia
 
@@ -155,7 +127,7 @@ sequenceDiagram
 
     Note over App: Access Token expirado (401)
 
-    App->>API: POST /api/auth/refresh<br/>X-Client-Type: web<br/>Cookie: refreshToken (automático)
+    App->>API: POST /api/auth/refresh<br/>X-Client-Type: web<br/>Authorization: Bearer oldToken<br/>Cookie: refreshToken (automático)
     activate API
     API->>API: Validar refresh token de cookie
     API->>API: Generar nuevo Access Token
@@ -168,31 +140,17 @@ sequenceDiagram
     App->>App: Reintentar request original
 ```
 
-### Implementación
+### Tabla de Detalles
 
-```javascript
-async function refreshToken() {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include', // Envía la cookie automáticamente
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Client-Type': 'web',
-        'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
-      }
-    })
+| Endpoint | Método | Headers Requeridos |
+|----------|--------|-------------------|
+| `POST /api/auth/refresh` | POST | `Content-Type: application/json`<br/>`X-Client-Type: web`<br/>`Authorization: Bearer <token>` |
 
-    if (!response.ok) {
-      return false
-    }
-
-    const data = await response.json()
-    localStorage.setItem('accessToken', data.accessToken)
-    return true
-  } catch (error) {
-    return false
-  }
+### Response 200
+```json
+{
+  "message": "Token refreshed successfully",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 }
 ```
 
@@ -211,39 +169,16 @@ sequenceDiagram
     participant Cookie as Cookie
 
     User->>App: Click en Logout
-    App->>API: POST /api/auth/logout<br/>Authorization: Bearer token<br/>Cookie: refreshToken
+    App->>API: POST /api/auth/logout<br/>Authorization: Bearer token<br/>Cookie: refreshToken (automático)
     activate API
-    API->>API: Revocar refresh token
+    API->>API: Revocar refresh token en BD
     API->>Cookie: Clear-Cookie: refreshToken
-    API-->>App: 200 {message: "Logout successful"}
+    API-->>App: 200 {message: "Sesión cerrada exitosamente"}
     deactivate API
 
     App->>Storage: localStorage.removeItem('accessToken')
     App->>Storage: localStorage.removeItem('user')
     App-->>User: Redirect a Login
-```
-
-### Implementación
-
-```javascript
-async function logout() {
-  try {
-    await fetch(`${API_BASE_URL}/api/auth/logout`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Client-Type': 'web',
-        'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
-      }
-    })
-  } finally {
-    // Limpiar storage incluso si falla el request
-    localStorage.removeItem('accessToken')
-    localStorage.removeItem('user')
-    window.location.href = '/login'
-  }
-}
 ```
 
 ---
@@ -263,8 +198,9 @@ sequenceDiagram
     App->>API: POST /api/user<br/>{email, names, lastnames, phoneCode,<br/>phoneNumber, password, birthdate}
     activate API
     API->>API: Validar datos
+    API->>API: Verificar email único
     API->>API: Hash password
-    API->>API: Crear usuario
+    API->>API: Crear usuario en BD
     API-->>App: 201 {message, userId}
     deactivate API
 
@@ -272,32 +208,16 @@ sequenceDiagram
     App->>App: Redirect a Login
 ```
 
-### Implementación
-
-```javascript
-async function register(userData) {
-  const response = await fetch(`${API_BASE_URL}/api/user`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      email: userData.email,
-      names: userData.names,
-      lastnames: userData.lastnames,
-      phoneCode: userData.phoneCode,
-      phoneNumber: userData.phoneNumber,
-      password: userData.password,
-      birthdate: userData.birthdate // Formato: YYYY-MM-DD
-    })
-  })
-
-  if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.error || 'Registration failed')
-  }
-
-  return response.json()
+### Request Body
+```json
+{
+  "email": "nuevo@ejemplo.com",
+  "names": "María",
+  "lastnames": "García López",
+  "password": "contraseña123",
+  "phoneNumber": "12345678",
+  "phoneCode": "+502",
+  "birthdate": "2000-05-15"
 }
 ```
 
@@ -312,277 +232,349 @@ sequenceDiagram
     participant User as Usuario
     participant App as App Web
     participant API as API Backend
-    participant Email as Email
+    participant Email as Servicio Email
 
     User->>App: Ingresa email
     App->>API: POST /api/auth/sendRecovery<br/>{email}
     activate API
-    API->>Email: Enviar código (6 dígitos)
-    API-->>App: 200 {message}
+    API->>API: Buscar usuario
+    API->>API: Generar código 6 dígitos
+    API->>Email: Enviar código
+    Email-->>User: Email con código
+    API-->>App: 200 {message: "Si el correo existe..."}
     deactivate API
-    Email-->>User: Código por email
 
-    User->>App: Ingresa código
+    User->>App: Ingresa código recibido
     App->>API: POST /api/auth/verifyCode<br/>{email, code}
     activate API
-    API-->>App: 200 {token, expiresAt}
+    API->>API: Validar código (15 min)
+    API->>API: Generar recovery token
+    API-->>App: 200 {token, expiresAt, message}
     deactivate API
 
-    App->>App: Guardar recovery token temporalmente
+    App->>App: Guardar recovery token (sessionStorage)
 
     User->>App: Ingresa nueva contraseña
     App->>API: POST /api/auth/recoverPassword<br/>Authorization: Bearer recoveryToken<br/>{password}
     activate API
-    API->>API: Actualizar contraseña
-    API-->>App: 200 {message}
+    API->>API: Validar recovery token
+    API->>API: Hash nueva contraseña
+    API->>API: Actualizar en BD
+    API-->>App: 200 {message: "Contraseña actualizada"}
     deactivate API
 
-    App-->>User: Contraseña actualizada - Redirect a Login
+    App-->>User: Éxito - Redirect a Login
 ```
 
-### Implementación
+### Tabla de Detalles
 
-```javascript
-// Paso 1: Solicitar código
-async function requestRecoveryCode(email) {
-  const response = await fetch(`${API_BASE_URL}/api/auth/sendRecovery`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email })
-  })
-  return response.json()
-}
-
-// Paso 2: Verificar código
-async function verifyRecoveryCode(email, code) {
-  const response = await fetch(`${API_BASE_URL}/api/auth/verifyCode`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, code })
-  })
-
-  if (!response.ok) {
-    throw new Error('Invalid or expired code')
-  }
-
-  const data = await response.json()
-  // Guardar token temporalmente (válido por 15 min)
-  sessionStorage.setItem('recoveryToken', data.token)
-  return data
-}
-
-// Paso 3: Establecer nueva contraseña
-async function resetPassword(password) {
-  const recoveryToken = sessionStorage.getItem('recoveryToken')
-
-  const response = await fetch(`${API_BASE_URL}/api/auth/recoverPassword`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${recoveryToken}`
-    },
-    body: JSON.stringify({ password })
-  })
-
-  sessionStorage.removeItem('recoveryToken')
-
-  if (!response.ok) {
-    throw new Error('Failed to reset password')
-  }
-
-  return response.json()
-}
-```
+| Paso | Endpoint | Método |
+|------|----------|--------|
+| 1. Solicitar código | `POST /api/auth/sendRecovery` | POST |
+| 2. Verificar código | `POST /api/auth/verifyCode` | POST |
+| 3. Nueva contraseña | `POST /api/auth/recoverPassword` | POST |
 
 ---
 
-## 6. Flujo de Chats
+## 6. Flujo de Creación de Chats
 
-### Crear Chat
-
-```javascript
-async function createChat(name) {
-  const response = await apiRequest('/chat', {
-    method: 'POST',
-    body: JSON.stringify({ name })
-  })
-  return response.json()
-}
-```
-
-### Obtener Chats
-
-```javascript
-async function getChats(page = 1) {
-  const response = await apiRequest(`/chat?page=${page}`)
-  return response.json()
-}
-```
-
----
-
-## 7. Flujo de Mensajes
-
-### Diagrama: Enviar Mensaje y Obtener Respuesta IA
+### Diagrama de Secuencia
 
 ```mermaid
 sequenceDiagram
     participant User as Usuario
     participant App as App Web
     participant API as API Backend
-    participant AI as Servicio IA
 
-    User->>App: Escribe mensaje
-    App->>API: POST /api/message/{chatId}<br/>{content}
-    API-->>App: 201 {messageId}
+    User->>App: Crea nuevo chat
 
+    alt Token válido
+        App->>API: POST /api/chat<br/>Authorization: Bearer token<br/>{name: "Nombre del chat"}
+    else Token expirado
+        App->>API: POST /api/auth/refresh
+        API-->>App: 200 {accessToken}
+        App->>API: POST /api/chat<br/>Authorization: Bearer newToken<br/>{name: "Nombre del chat"}
+    end
+
+    activate API
+    API->>API: Validar token
+    API->>API: Crear chat en BD
+    API-->>App: 201 {message, chat}
+    deactivate API
+
+    App-->>User: Chat creado - Abrir conversación
+```
+
+### Request Body
+```json
+{
+  "name": "Consulta sobre trámites"
+}
+```
+
+### Response 201
+```json
+{
+  "message": "Chat creado exitosamente",
+  "chat": {
+    "chatId": 5,
+    "userId": 1,
+    "nombre": "Consulta sobre trámites",
+    "fechaInicio": "2026-01-12T10:30:00.000Z"
+  }
+}
+```
+
+---
+
+## 7. Flujo de Obtener Chats
+
+### Diagrama de Secuencia
+
+```mermaid
+sequenceDiagram
+    participant User as Usuario
+    participant App as App Web
+    participant API as API Backend
+
+    User->>App: Visualiza lista de chats
+
+    App->>API: GET /api/chat?page=1<br/>Authorization: Bearer token
+    activate API
+    API->>API: Validar token
+    API->>API: Obtener chats del usuario
+    API-->>App: 200 {chats, currentPage, totalPages, totalChats}
+    deactivate API
+
+    App-->>User: Lista de chats actualizada
+
+    opt Cargar más (scroll infinito)
+        User->>App: Scroll al final
+        App->>API: GET /api/chat?page=2<br/>Authorization: Bearer token
+        API-->>App: 200 {chats...}
+        App-->>User: Más chats cargados
+    end
+```
+
+### Response 200
+```json
+{
+  "chats": [
+    {
+      "chatId": 5,
+      "userId": 1,
+      "nombre": "Consulta sobre trámites",
+      "fechaInicio": "2026-01-12T10:30:00.000Z",
+      "lastMessageContent": "¿Cómo solicito mi DPI?",
+      "lastMessageTimestamp": "2026-01-12T10:45:00.000Z",
+      "lastMessageSource": "user"
+    }
+  ],
+  "currentPage": 1,
+  "totalPages": 3,
+  "totalChats": 25
+}
+```
+
+---
+
+## 8. Flujo de Mensajes en Chats
+
+### 8.1 Obtener Mensajes de un Chat
+
+```mermaid
+sequenceDiagram
+    participant User as Usuario
+    participant App as App Web
+    participant API as API Backend
+
+    User->>App: Abre un chat
+
+    App->>API: GET /api/message/{chatId}?page=1<br/>Authorization: Bearer token
+    activate API
+    API->>API: Validar token
+    API->>API: Verificar acceso al chat
+    API->>API: Obtener mensajes con paginación
+    API-->>App: 200 {messages, currentPage, totalPages, totalMessages}
+    deactivate API
+
+    App-->>User: Mensajes cargados
+
+    opt Cargar mensajes anteriores
+        User->>App: Scroll hacia arriba
+        App->>API: GET /api/message/{chatId}?page=2
+        API-->>App: 200 {messages...}
+        App-->>User: Mensajes anteriores cargados
+    end
+```
+
+### 8.2 Crear Mensaje en Chat
+
+```mermaid
+sequenceDiagram
+    participant User as Usuario
+    participant App as App Web
+    participant API as API Backend
+
+    User->>App: Escribe y envía mensaje
+
+    alt ChatId existe
+        App->>API: POST /api/message/{chatId}<br/>Authorization: Bearer token<br/>{content: "Texto del mensaje"}
+    else ChatId no existe (nuevo chat)
+        App->>API: POST /api/message<br/>Authorization: Bearer token<br/>{content: "Texto del mensaje"}
+    end
+
+    activate API
+    API->>API: Validar token
+    API->>API: Crear mensaje en BD
+    API-->>App: 201 {message, messageId}
+    deactivate API
+
+    App->>App: Mostrar mensaje en UI
+    App-->>User: Mensaje enviado
+```
+
+### 8.3 Obtener Respuesta de IA
+
+```mermaid
+sequenceDiagram
+    participant User as Usuario
+    participant App as App Web
+    participant API as API Backend
+    participant AI as Servicio IA (Python)
+
+    User->>App: Envía pregunta
     App->>App: Mostrar mensaje del usuario
     App->>App: Mostrar indicador de carga
 
-    App->>API: GET /api/message/response/{chatId}?question=...
+    alt ChatId existe
+        App->>API: GET /api/message/response/{chatId}?question=...<br/>Authorization: Bearer token
+    else ChatId no existe
+        App->>API: GET /api/message/response?question=...<br/>Authorization: Bearer token
+    end
+
     activate API
-    API->>AI: Procesar pregunta
+    API->>API: Validar token
+    API->>API: Obtener historial y resumen del chat
+    API->>API: Calcular edad del usuario
+    API->>AI: Procesar pregunta con contexto
+    AI->>AI: Buscar en documentos (Pinecone)
+    AI->>AI: Generar respuesta (OpenAI)
     AI-->>API: Respuesta generada
+    API->>API: Guardar mensaje del asistente
+    API->>API: Actualizar resumen del chat
     API-->>App: 200 {response, reference, responseTime}
     deactivate API
 
+    App->>App: Ocultar indicador de carga
     App->>App: Mostrar respuesta de IA
     App-->>User: Conversación actualizada
 ```
 
-### Implementación
+### 8.4 Asignar Mensaje a Chat
 
-```javascript
-// Enviar mensaje de usuario
-async function sendMessage(chatId, content) {
-  const endpoint = chatId ? `/message/${chatId}` : '/message'
-  const response = await apiRequest(endpoint, {
-    method: 'POST',
-    body: JSON.stringify({ content })
-  })
-  return response.json()
-}
+```mermaid
+sequenceDiagram
+    participant App as App Web
+    participant API as API Backend
 
-// Obtener respuesta de IA
-async function getAIResponse(chatId, question) {
-  const endpoint = chatId
-    ? `/message/response/${chatId}?question=${encodeURIComponent(question)}`
-    : `/message/response?question=${encodeURIComponent(question)}`
+    Note over App: Mensaje creado sin chatId<br/>Usuario decide guardar en chat
 
-  const response = await apiRequest(endpoint)
-  return response.json()
-}
-
-// Obtener historial de mensajes
-async function getMessages(chatId, page = 1) {
-  const response = await apiRequest(`/message/${chatId}?page=${page}`)
-  return response.json()
-}
-
-// Asignar mensaje a chat
-async function assignMessageToChat(messageId, chatId) {
-  const response = await apiRequest(`/message/${messageId}/${chatId}`, {
-    method: 'PUT'
-  })
-  return response.json()
-}
+    App->>API: PUT /api/message/{messageId}/{chatId}<br/>Authorization: Bearer token
+    activate API
+    API->>API: Validar token
+    API->>API: Verificar propiedad del mensaje
+    API->>API: Asignar mensaje al chat
+    API-->>App: 200 {message: "Mensaje asignado exitosamente"}
+    deactivate API
 ```
+
+### Tabla de Detalles de Endpoints de Mensajes
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `GET /api/message/{chatId}` | GET | Obtiene mensajes del chat (paginado) |
+| `POST /api/message/{chatId}` | POST | Crea mensaje en chat existente |
+| `POST /api/message` | POST | Crea mensaje sin chat asignado |
+| `GET /api/message/response/{chatId}` | GET | Obtiene respuesta IA para chat |
+| `GET /api/message/response` | GET | Obtiene respuesta IA sin chat |
+| `PUT /api/message/{messageId}/{chatId}` | PUT | Asigna mensaje a chat |
 
 ---
 
-## 8. Manejo de Estado de Autenticación
+## 9. Flujo de Documentos (Solo Admin)
 
-### Hook de React (ejemplo)
+### 9.1 Obtener Documentos
 
-```javascript
-import { useState, useEffect, createContext, useContext } from 'react'
+```mermaid
+sequenceDiagram
+    participant Admin as Admin Web
+    participant API as API Backend
 
-const AuthContext = createContext(null)
-
-export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    // Verificar si hay sesión al cargar
-    const storedUser = localStorage.getItem('user')
-    const token = localStorage.getItem('accessToken')
-
-    if (storedUser && token) {
-      setUser(JSON.parse(storedUser))
-    }
-    setLoading(false)
-  }, [])
-
-  const login = async (email, password) => {
-    const data = await loginAPI(email, password)
-    setUser(data.user)
-    return data
-  }
-
-  const logout = async () => {
-    await logoutAPI()
-    setUser(null)
-  }
-
-  return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
-      {children}
-    </AuthContext.Provider>
-  )
-}
-
-export const useAuth = () => useContext(AuthContext)
+    Admin->>API: GET /api/document<br/>Authorization: Bearer token
+    activate API
+    API->>API: Validar token
+    API->>API: Verificar rol admin
+    API->>API: Obtener documentos
+    API->>API: Generar URLs presignadas (1h)
+    API-->>Admin: 200 {documents}
+    deactivate API
 ```
 
----
+### 9.2 Subir Documento
 
-## 9. Manejo de Errores
+```mermaid
+sequenceDiagram
+    participant Admin as Admin Web
+    participant API as API Backend
+    participant S3 as AWS S3
+    participant Python as Servicio Python
+    participant Email as Servicio Email
 
-```javascript
-async function apiRequest(endpoint, options = {}) {
-  try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Client-Type': 'web',
-        'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        ...options.headers
-      }
-    })
+    Admin->>API: POST /api/document<br/>Content-Type: multipart/form-data<br/>{file, title, author, year, minAge, maxAge}
+    activate API
+    API->>API: Validar token y rol admin
+    API->>S3: Subir archivo
+    API-->>Admin: 202 {message: "Documento aceptado para procesamiento"}
+    deactivate API
 
-    if (response.status === 401) {
-      const refreshed = await refreshToken()
-      if (refreshed) {
-        return apiRequest(endpoint, options)
-      }
-      throw new Error('SESSION_EXPIRED')
-    }
+    Note over API,Python: Procesamiento asíncrono
 
-    if (response.status === 403) {
-      throw new Error('FORBIDDEN')
-    }
+    API->>Python: Procesar documento
+    Python->>Python: Extraer texto
+    Python->>Python: Clasificar categoría
+    Python->>Python: Generar embeddings
+    Python->>Python: Guardar en Pinecone
+    Python-->>API: Procesamiento completo
 
-    if (response.status === 404) {
-      throw new Error('NOT_FOUND')
-    }
+    API->>Email: Notificar al admin
+    Email-->>Admin: Email de confirmación
+```
 
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Request failed')
-    }
+### 9.3 Eliminar Documento
 
-    return response
-  } catch (error) {
-    if (error.message === 'SESSION_EXPIRED') {
-      localStorage.clear()
-      window.location.href = '/login'
-    }
-    throw error
-  }
-}
+```mermaid
+sequenceDiagram
+    participant Admin as Admin Web
+    participant API as API Backend
+    participant S3 as AWS S3
+    participant Pinecone as Pinecone
+    participant Email as Servicio Email
+
+    Admin->>API: DELETE /api/document/{documentId}<br/>Authorization: Bearer token
+    activate API
+    API->>API: Validar token y rol admin
+    API-->>Admin: 202 {message: "Documento eliminado. Se notificará por correo."}
+    deactivate API
+
+    Note over API,Pinecone: Eliminación asíncrona
+
+    API->>S3: Eliminar archivo
+    API->>Pinecone: Eliminar embeddings
+    API->>API: Eliminar registro BD
+
+    API->>Email: Notificar al admin
+    Email-->>Admin: Email de confirmación
 ```
 
 ---
@@ -604,7 +596,22 @@ async function apiRequest(endpoint, options = {}) {
 | `/api/chat` | POST | Si | Crear chat |
 | `/api/message/:chatId` | GET | Si | Listar mensajes |
 | `/api/message/:chatId` | POST | Si | Crear mensaje |
+| `/api/message` | POST | Si | Crear mensaje sin chat |
 | `/api/message/response/:chatId` | GET | Si | Respuesta IA |
+| `/api/message/response` | GET | Si | Respuesta IA sin chat |
+| `/api/message/:messageId/:chatId` | PUT | Si | Asignar mensaje a chat |
+| `/api/document` | GET | Admin | Listar documentos |
+| `/api/document` | POST | Admin | Subir documento |
+| `/api/document/:documentId` | DELETE | Admin | Eliminar documento |
+
+---
+
+## Notas Importantes para Web
+
+1. **Siempre usar `credentials: 'include'`** en todas las requests para que el navegador envíe/reciba cookies
+2. **El refreshToken nunca es accesible desde JavaScript** - está en una cookie httpOnly
+3. **Manejar 401 automáticamente** - intentar refresh antes de redirigir a login
+4. **deviceId en localStorage** - se pierde en incógnito o al limpiar datos
 
 ---
 
