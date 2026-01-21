@@ -10,6 +10,52 @@ Todos los endpoints protegidos requieren un Access Token en el header:
 Authorization: Bearer <access_token>
 ```
 
+### Manejo del `deviceId`
+
+El `deviceId` identifica de forma única el dispositivo o navegador del usuario, permitiendo gestionar múltiples sesiones simultáneas.
+
+**Mobile (Android/iOS):**
+- Usar identificadores nativos del dispositivo (Android ID, IDFV, etc.)
+
+**Web:**
+Se recomienda generar un UUID y almacenarlo en `localStorage` para persistencia entre sesiones:
+
+```javascript
+function getDeviceId() {
+  const STORAGE_KEY = 'deviceId'
+  let deviceId = localStorage.getItem(STORAGE_KEY)
+
+  if (!deviceId) {
+    deviceId = crypto.randomUUID()
+    localStorage.setItem(STORAGE_KEY, deviceId)
+  }
+
+  return deviceId
+}
+
+// Uso en login
+const response = await fetch('/api/auth/login', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-Client-Type': 'web'
+  },
+  credentials: 'include', // Importante para cookies
+  body: JSON.stringify({
+    email: 'usuario@ejemplo.com',
+    password: 'contraseña123',
+    deviceId: getDeviceId()
+  })
+})
+```
+
+**Consideraciones:**
+- El `deviceId` se pierde si el usuario limpia el localStorage o usa modo incógnito
+- En modo incógnito se generará un nuevo `deviceId` por sesión
+- Si se requiere mayor persistencia, considerar librerías de fingerprinting como [FingerprintJS](https://fingerprint.com/)
+
+---
+
 ### POST `/api/auth/login`
 
 Iniciar sesión y obtener tokens de autenticación.
