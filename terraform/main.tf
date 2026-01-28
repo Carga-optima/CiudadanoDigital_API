@@ -277,7 +277,7 @@ resource "aws_ssm_parameter" "database_url" {
   type  = "SecureString"
 
   value = "postgresql://${var.database_username}:${var.database_password}@${aws_db_instance.comp_digital_db.address}:${aws_db_instance.comp_digital_db.port}/postgres?sslmode=require"
-
+  
   tags = {
     Name = "comp-digital-db-url"
     Env  = "prod"

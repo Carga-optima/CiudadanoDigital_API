@@ -12,7 +12,7 @@ variable "instance_type" {
 
 variable "bucket_name" {
   type    = string
-  default = "comp-digital-bucket"
+  default = "comp-digital-bucket-prueba"
 }
 
 variable "database_username" {
