@@ -124,9 +124,20 @@ class Logger {
       content,
     }
 
+    const formattedLog = this.formatLog(logData)
+
+    if (level === LOG_LEVELS.ERROR || level === LOG_LEVELS.WARN) {
+      console.error(formattedLog)
+    } else {
+      console.log(formattedLog)
+    }
+
     if (this.enableFile) {
-      const formattedLog = this.formatLog(logData)
-      this.writeToFile(formattedLog)
+      try {
+        this.writeToFile(formattedLog)
+      } catch (fileErr) {
+        console.error(`[Logger] Error escribiendo archivo: ${fileErr.message}`)
+      }
     }
   }
 

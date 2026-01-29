@@ -40,4 +40,11 @@ app.use(`${api}/chat/`, chatRouter)
 app.use(`${api}/message/`, messageRouter)
 app.use(`${api}/document/`, documentRouter)
 
+// Error handler global
+app.use((err, _req, res, _next) => {
+  console.error('[Global Error Handler]', err)
+  const status = err.status || 500
+  res.status(status).json({ error: err.message || 'Error interno del servidor' })
+})
+
 export default app
