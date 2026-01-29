@@ -42,6 +42,9 @@ RUN if [ -d /wheels ]; then ./ciudadano_digital/bin/pip install --no-index --fin
 # 5) Copiar el resto de la aplicación
 COPY . .
 
+# 5.1) Crear directorio de logs con permisos de escritura
+RUN mkdir -p /usr/src/app/logs && chmod 755 /usr/src/app/logs
+
 # 6) Limpiar artefactos temporales y purgar dependencias de build para reducir tamaño
 RUN rm -rf /wheels || true \
  && apt-get purge -y build-essential python3-dev git \
